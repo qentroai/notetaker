@@ -1,0 +1,11 @@
+{
+  "name": "Personal Meeting Notes",
+  "short_name": "Meeting Notes",
+  "description": "Live speech-to-text notes saved as Markdown to Google Drive.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#ffffff",
+  "icons": []
+}
