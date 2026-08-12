@@ -19,3 +19,5 @@ label{display:block;font-weight:700;margin:18px 0 7px}input,textarea{width:100%;
 .account div{display:grid}.account span{color:#667085;font-size:.84rem}.warning{padding:12px;background:#fff4e5;border:1px solid #ffd395;border-radius:10px;color:#7a4510}
 .hidden{display:none!important}footer{color:#667085;text-align:center;font-size:.82rem;margin-top:22px}
 @media(max-width:600px){header{align-items:flex-start;flex-direction:column}header>button{width:100%}.card{padding:22px 16px}}
+
+.account-actions{display:flex;gap:14px;align-items:center}

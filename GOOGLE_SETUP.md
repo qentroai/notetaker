@@ -15,3 +15,7 @@ Authorized JavaScript origin:
 - https://notes.qentrotech.com
 
 Edit only `config.js` after creating the Google OAuth client.
+
+## v3 sign-in behavior
+
+No Google Cloud configuration change is required from v2. The code now uses `prompt: select_account`, includes a **Switch account** control, and handles popup cancellation/blocking so users can retry.

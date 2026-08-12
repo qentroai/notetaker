@@ -1,7 +1,10 @@
-# Simple Meeting Notes v2
+# Simple Meeting Notes v3
 
 ## Features
 - Multiple users sign in with their own Google account.
+- Google sign-in always opens the account chooser.
+- Signed-in users can switch Google accounts.
+- Canceled or blocked sign-in attempts recover cleanly so users can retry.
 - No application backend or database server.
 - User enters only **Meeting with**.
 - Start / Pause / Resume / Stop.
