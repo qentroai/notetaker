@@ -21,3 +21,11 @@ label{display:block;font-weight:700;margin:18px 0 7px}input,textarea{width:100%;
 @media(max-width:600px){header{align-items:flex-start;flex-direction:column}header>button{width:100%}.card{padding:22px 16px}}
 
 .account-actions{display:flex;gap:14px;align-items:center}
+
+.mic-status{font-weight:700}
+.mic-listening{color:#0a7d32}
+.mic-listening::before{content:"● ";animation:mic-pulse 1.4s ease-in-out infinite}
+.mic-reconnecting{color:#b8860b}
+.mic-error{color:#d92d20}
+.mic-off{color:#667085}
+@keyframes mic-pulse{0%,100%{opacity:1}50%{opacity:.25}}

@@ -16,6 +16,10 @@
 - The app creates/uses a visible Google Drive folder named `Meeting Notes`.
 - Active meeting state is cached in IndexedDB for recovery.
 - No audio file is stored by the app.
+- A live mic status badge (🎙️ Listening / ⏳ Reconnecting / ⚠️ error) shows whether speech capture is actually running, instead of a static "Recording" label.
+- Speech capture keeps itself alive for the whole meeting: if the browser's recognizer stops itself (which it does periodically even mid-meeting), the app restarts it automatically, with a watchdog as a backup in case a restart silently fails.
+- While recording, the app requests a screen wake lock (where supported) so the phone/laptop screen doesn't sleep and kill the microphone mid-meeting.
+- If no voice is detected for **10 minutes straight**, the meeting stops itself automatically and saves what was captured, with a note explaining why.
 
 ## Google Cloud setup
 1. Enable **Google Drive API**.
