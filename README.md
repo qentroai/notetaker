@@ -20,6 +20,7 @@
 - Speech capture keeps itself alive for the whole meeting: if the browser's recognizer stops itself (which it does periodically even mid-meeting), the app restarts it automatically, with a watchdog as a backup in case a restart silently fails.
 - While recording, the app requests a screen wake lock (where supported) so the phone/laptop screen doesn't sleep and kill the microphone mid-meeting.
 - If no voice is detected for **10 minutes straight**, the meeting stops itself automatically and saves what was captured, with a note explaining why.
+- The service worker fetches app files network-first (falling back to its cache only when offline), so a new deploy is always picked up on the next reload instead of a returning visitor getting stuck on an old cached copy of the app.
 
 ## Google Cloud setup
 1. Enable **Google Drive API**.
@@ -50,3 +51,7 @@ For `notes.qentrotech.com` on GitHub Pages:
   - Value: `YOUR-GITHUB-USERNAME.github.io`
   - TTL: Automatic
 - Add `https://notes.qentrotech.com` to the Google OAuth client's Authorized JavaScript origins.
+
+### If a device seems stuck on an old, broken version
+The app is a PWA with a service worker (`service-worker.js`) that caches its own files so it can reopen offline. On any device that visited the site *before* this fix, that service worker installed once and (with the old cache-first version of the file) kept re-serving that first snapshot forever, no matter how many times the real files were fixed on the server — the browser only re-installs the service worker when `service-worker.js` itself changes, and the old version's cache name never changed across deploys.
+After deploying this fix, most devices pick it up automatically on their next reload. If one still looks stuck (especially a phone with the app added to the home screen), do a one-time reset on that device: open the site in Chrome, go to **Site settings → Storage → Clear & reset** (or uninstall/reinstall the home-screen icon), then reopen it. From then on, updates should show up automatically on the next reload.
