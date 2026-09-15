@@ -1,5 +1,6 @@
 const SCOPE = "openid email profile https://www.googleapis.com/auth/drive.file";
 const DB = "simple-meeting-notes-v2", STORE = "meeting", KEY = "active";
+const AUTH_STORAGE_KEY = "smn-google-auth"; // cached access token + profile, so a reload doesn't force a fresh sign-in
 const SILENCE_LIMIT_MS = 10 * 60 * 1000; // auto-stop the meeting after this long with no detected voice
 const WATCHDOG_MS = 8000;                // how often we make sure the mic is actually still listening
 const RECONNECT_FLICKER_MS = 1200;       // only show "reconnecting" if a restart takes longer than this
@@ -163,11 +164,42 @@ function releaseWakeLock() { try { wakeLock?.release() } catch {} wakeLock = nul
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && state.status === "recording" && !wakeLock) acquireWakeLock() });
 
 function waitGoogle() { return new Promise((res, rej) => { const end = Date.now() + 10000; (function c() { if (window.google?.accounts?.oauth2) return res(); if (Date.now() > end) return rej(new Error("Google sign-in library did not load.")); setTimeout(c, 150) })() }) }
-async function requestGoogleToken() { const id = window.APP_CONFIG?.GOOGLE_CLIENT_ID; if (!id || id.startsWith("YOUR_")) throw new Error("Add your Google OAuth Client ID to config.js first."); await waitGoogle(); if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({ client_id: id, scope: SCOPE, callback: () => {}, error_callback: err => console.error("Google OAuth popup error:", err) }); return await new Promise((res, rej) => { tokenClient.callback = r => r?.error ? rej(new Error(r.error_description || r.error)) : res(r.access_token); tokenClient.error_callback = err => { const m = err?.type === "popup_closed" ? "Google sign-in was canceled. You can try again." : err?.type === "popup_failed_to_open" ? "Google sign-in popup was blocked. Allow popups and try again." : "Google sign-in failed. Please try again."; rej(new Error(m)) }; tokenClient.requestAccessToken({ prompt: "select_account" }) }) }
+
+// ---- Persist the signed-in session across reloads / reopening the app ----
+// A browser-only app like this one never gets a Google *refresh* token (that
+// requires a backend), so the access token itself still expires (Google gives
+// it ~1 hour). What we CAN do is remember it for that hour so closing and
+// reopening the tab/app doesn't force a fresh "Sign in with Google" every time.
+function saveAuth(token, expiresInSec, profile) {
+  const expiresAt = Date.now() + (Number(expiresInSec) > 0 ? Number(expiresInSec) * 1000 : 55 * 60 * 1000);
+  try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token, expiresAt, name: profile?.name || "", email: profile?.email || "" })) } catch {}
+}
+function loadAuth() {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.token || !data.expiresAt || data.expiresAt <= Date.now() + 30000) return null; // missing or about to expire
+    return data;
+  } catch { return null }
+}
+function clearAuth() { try { localStorage.removeItem(AUTH_STORAGE_KEY) } catch {} }
+function restoreSession() {
+  const cached = loadAuth();
+  if (!cached) return false;
+  accessToken = cached.token;
+  e.userName.textContent = cached.name || "Google user";
+  e.userEmail.textContent = cached.email || "";
+  e.account.classList.remove("hidden");
+  e.signIn.classList.add("hidden");
+  return true;
+}
+
+async function requestGoogleToken() { const id = window.APP_CONFIG?.GOOGLE_CLIENT_ID; if (!id || id.startsWith("YOUR_")) throw new Error("Add your Google OAuth Client ID to config.js first."); await waitGoogle(); if (!tokenClient) tokenClient = google.accounts.oauth2.initTokenClient({ client_id: id, scope: SCOPE, callback: () => {}, error_callback: err => console.error("Google OAuth popup error:", err) }); return await new Promise((res, rej) => { tokenClient.callback = r => r?.error ? rej(new Error(r.error_description || r.error)) : res(r); tokenClient.error_callback = err => { const m = err?.type === "popup_closed" ? "Google sign-in was canceled. You can try again." : err?.type === "popup_failed_to_open" ? "Google sign-in popup was blocked. Allow popups and try again." : "Google sign-in failed. Please try again."; rej(new Error(m)) }; tokenClient.requestAccessToken({ prompt: "select_account" }) }) }
 async function loadGoogleUser() { const r = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: `Bearer ${accessToken}` } }); if (!r.ok) throw new Error("Could not read Google account profile."); return await r.json() }
-async function signIn() { e.signIn.disabled = true; e.signIn.textContent = "Signing in…"; try { accessToken = await requestGoogleToken(); const u = await loadGoogleUser(); e.userName.textContent = u.name || "Google user"; e.userEmail.textContent = u.email || ""; e.account.classList.remove("hidden"); e.signIn.classList.add("hidden"); updateStart() } finally { e.signIn.disabled = false; e.signIn.textContent = "Sign in with Google" } }
-async function switchAccount() { try { accessToken = await requestGoogleToken(); const u = await loadGoogleUser(); e.userName.textContent = u.name || "Google user"; e.userEmail.textContent = u.email || ""; updateStart() } catch (err) { alert(err.message || "Could not switch Google account.") } }
-function signOut() { accessToken = null; e.userName.textContent = ""; e.userEmail.textContent = ""; e.account.classList.add("hidden"); e.signIn.classList.remove("hidden"); updateStart() }
+async function signIn() { e.signIn.disabled = true; e.signIn.textContent = "Signing in…"; try { const r = await requestGoogleToken(); accessToken = r.access_token; const u = await loadGoogleUser(); e.userName.textContent = u.name || "Google user"; e.userEmail.textContent = u.email || ""; e.account.classList.remove("hidden"); e.signIn.classList.add("hidden"); saveAuth(accessToken, r.expires_in, u); updateStart() } finally { e.signIn.disabled = false; e.signIn.textContent = "Sign in with Google" } }
+async function switchAccount() { try { const r = await requestGoogleToken(); accessToken = r.access_token; const u = await loadGoogleUser(); e.userName.textContent = u.name || "Google user"; e.userEmail.textContent = u.email || ""; saveAuth(accessToken, r.expires_in, u); updateStart() } catch (err) { alert(err.message || "Could not switch Google account.") } }
+function signOut() { accessToken = null; clearAuth(); e.userName.textContent = ""; e.userEmail.textContent = ""; e.account.classList.add("hidden"); e.signIn.classList.remove("hidden"); updateStart() }
 function fmt(sec) { const h = Math.floor(sec / 3600).toString().padStart(2, "0"), m = Math.floor(sec % 3600 / 60).toString().padStart(2, "0"), s = Math.floor(sec % 60).toString().padStart(2, "0"); return `${h}:${m}:${s}` }
 function updateTimer() { if (!state.startedAt) return; const end = state.endedAt ? new Date(state.endedAt).getTime() : Date.now(), v = fmt(Math.max(0, Math.floor((end - new Date(state.startedAt).getTime()) / 1000))); e.timer.textContent = v; e.pausedTimer.textContent = v }
 function startTimer() { clearInterval(timerId); updateTimer(); timerId = setInterval(updateTimer, 1000) }
@@ -198,7 +230,17 @@ function stamp(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.
 function slug(v) { return v.toLowerCase().normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").slice(0, 60) || "meeting" }
 function filename() { return `${stamp(new Date(state.endedAt))}-meeting-with-${slug(state.meetingWith)}.md` }
 function markdown() { const transcript = state.segments.map(x => x.text).join("\n\n") || "_No transcript captured._", notes = state.notes.trim() || "_No personal notes._"; return `# Meeting with ${state.meetingWith}\n\n**Started:** ${new Date(state.startedAt).toLocaleString()}  \n**Ended:** ${new Date(state.endedAt).toLocaleString()}\n\n## Personal Notes\n\n${notes}\n\n## Transcript\n\n${transcript}\n` }
-async function driveFetch(url, opt = {}) { if (!accessToken) throw new Error("Google sign-in expired. Please sign in again."); return fetch(url, { ...opt, headers: { ...(opt.headers || {}), Authorization: `Bearer ${accessToken}` } }) }
+async function driveFetch(url, opt = {}) {
+  if (!accessToken) throw new Error("Google sign-in expired. Please sign in again.");
+  const res = await fetch(url, { ...opt, headers: { ...(opt.headers || {}), Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 401) {
+    // The cached token turned out to be dead (revoked, or our expiry estimate was off) — drop it cleanly.
+    accessToken = null; clearAuth();
+    e.account.classList.add("hidden"); e.signIn.classList.remove("hidden"); updateStart();
+    throw new Error("Google sign-in expired. Please sign in again.");
+  }
+  return res;
+}
 function esc(v) { return v.replace(/\\/g, "\\\\").replace(/'/g, "\\'") }
 async function folder() { const name = window.APP_CONFIG?.DRIVE_FOLDER_NAME || "Meeting Notes", url = new URL("https://www.googleapis.com/drive/v3/files"); url.searchParams.set("q", `name='${esc(name)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`); url.searchParams.set("fields", "files(id,name)"); const r = await driveFetch(url); if (!r.ok) throw new Error("Could not search Drive folder."); const d = await r.json(); if (d.files?.length) return d.files[0].id; const c = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder" }) }); if (!c.ok) throw new Error("Could not create Drive folder."); return (await c.json()).id }
 function multi(meta, content) { const b = `notes_${crypto.randomUUID()}`; return { b, body: [`--${b}`, "Content-Type: application/json; charset=UTF-8", "", JSON.stringify(meta), `--${b}`, "Content-Type: text/markdown; charset=UTF-8", "", content, `--${b}--`].join("\r\n") } }
@@ -239,6 +281,7 @@ e.hideDoneTranscript.onclick = () => toggle(e.doneTranscriptPanel);
 e.newMeeting.onclick = () => newMeeting();
 
 setupSpeech();
+restoreSession();
 await loadLocal();
 if (state.status === "recording") { state.status = "paused"; await saveLocal() } // recognition can't survive a reload — resume manually
 render();

@@ -5,6 +5,7 @@
 - Google sign-in always opens the account chooser.
 - Signed-in users can switch Google accounts.
 - Canceled or blocked sign-in attempts recover cleanly so users can retry.
+- Sign-in is remembered across reloads and reopening the app: the access token is cached in `localStorage` and restored automatically, so closing the tab/app and coming back doesn't ask you to sign in again. This has a hard limit — the app has no backend, so it never gets a Google *refresh* token, and the cached token itself expires after roughly an hour. When it does, the "Sign in with Google" button comes back.
 - No application backend or database server.
 - User enters only **Meeting with**.
 - Start / Pause / Resume / Stop.
